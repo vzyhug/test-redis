@@ -4,6 +4,8 @@
 
 Thiết kế đề xuất cho Backend API + Firestore + Redis trong [kiến trúc hệ thống](architecture.md). Dùng **session phía server**, cookie chứa mã phiên ngẫu nhiên. Tài liệu là đặc tả dữ liệu và luồng xử lý, chưa phải backend đã triển khai.
 
+Thiết kế lưu bền tương ứng: [Firestore cho tài khoản, lịch sử phiên, hoạt động và thống kê](firestore-data-design.md), gồm ánh xạ collections, transaction chống đếm trùng và checkpoint worker.
+
 - Firestore giữ tài khoản gốc, trạng thái tài khoản, dữ liệu xác thực theo nhà cung cấp và lịch sử cần lưu lâu dài. Redis giữ phiên, bản sao thông tin tài khoản, bộ đếm và lịch sử gần đây.
 - Mục tiêu ban đầu: Redis 7+ với một primary; có thể thêm replica/Sentinel. Chưa áp dụng trực tiếp các thao tác nhiều key cho Redis Cluster.
 - Key có prefix `auth:`; `uid` là ID tài khoản ổn định từ Firestore. Các dấu `<...>` là tham số cần thay thế, không phải ký tự trong key.
@@ -122,18 +124,24 @@ Key: `auth:user:<uid>:activities`. Mỗi entry gồm:
 | `event_type` | Loại sự kiện bên dưới |
 | `user_id` | uid; rỗng với tài khoản không xác định |
 | `session_ref` | Mã tham chiếu hiển thị đã dẫn xuất từ sid; không chứa secret cookie |
+| `source_epoch` | UUID thế hệ dữ liệu Redis, dùng cùng key Stream để xác định nguồn đồng bộ |
 | `occurred_at` | Unix milliseconds của server |
 | `ip` | IP đã giảm chi tiết nếu không cần lưu IP đầy đủ |
 | `device_name` | Nhãn thiết bị |
 | `result` | `success`, `failure`, `denied` |
 | `reason` | Mã lý do, không chứa mật khẩu hoặc nội dung bí mật |
 | `request_id` | ID theo dõi yêu cầu |
+| `payload` | JSON metadata theo loại sự kiện; chỉ gồm field đã cho phép, không chứa secret |
 
 Các loại chính: `login_success`, `login_failed`, `login_denied`, `logout`, `session_revoked`, `session_expired`, `password_changed`, `profile_updated`. Chỉ log hành động cần theo dõi; không ghi mỗi heartbeat vào Stream.
+
+`session_ref` dùng HMAC-SHA256 đầy đủ trên sid với khóa tham chiếu riêng và ổn định suốt phiên. `login_success` phải mang snapshot metadata phiên đủ để lưu Firestore; sự kiện kết thúc có thời điểm/lý do và snapshot cuối nếu còn Hash. Bổ sung `session_snapshot` tối đa một lần mỗi 5 phút mỗi phiên có hoạt động để lưu mốc last_seen/expires gần nhất mà không ghi mỗi heartbeat; sự kiện này không tăng bộ đếm login. Ghi snapshot vào cùng Stream user, theo thứ tự cập nhật phiên. Chi tiết payload và source epoch ở mục 5 của thiết kế Firestore.
 
 `XADD ... *` tạo ID Stream `<milliseconds>-<sequence>`; thứ tự đó là thứ tự Redis tiếp nhận. `event_id` là ID nghiệp vụ riêng. Đọc 20 sự kiện mới nhất bằng `XREVRANGE key + - COUNT 20`; phân trang tiếp bằng cận trên loại trừ `(<last_stream_id>`. Xem [XADD và cơ chế trimming](https://redis.io/docs/latest/commands/xadd/).
 
 Mặc định giữ 30 ngày, tối đa 10.000 entry mỗi user. Worker xuất sang Firestore với document ID = `event_id`, cập nhật checkpoint sau khi ghi thành công; xử lý lại phải là upsert không tạo bản ghi trùng. Worker phát hiện key bằng `SCAN`, quét đủ vòng, khử trùng key và tiếp tục từ checkpoint theo từng Stream. Stream của tài khoản không xác định được xử lý tương tự và giới hạn tốc độ đầu vào.
+
+Khi triển khai, upsert ở đây có nghĩa là nhận diện cùng event bất biến, không ghi đè payload khác: event, receipt chống lặp, bộ đếm, bản chiếu phiên và checkpoint được áp dụng trong cùng Firestore transaction theo tài liệu Firestore. Đọc tiến độ theo từng Stream/epoch; không dùng mốc thời gian mới nhất toàn hệ thống thay thế checkpoint.
 
 Chỉ trim phần đã lưu bền: xóa các entry đã xuất mà vượt tuổi 30 ngày hoặc vượt giới hạn số lượng. Nếu chưa xuất kịp thì cảnh báo backlog và tạm cho phép vượt giới hạn; đặt ngân sách bộ nhớ và ngưỡng từ chối ghi khi cần. Không dùng `XADD MAXLEN` vô điều kiện nếu yêu cầu không mất audit. Không đặt TTL cho cả Stream vì có thể làm mất sự kiện chưa xuất. API lịch sử hợp nhất dữ liệu gần đây với Firestore theo `event_id`, tránh trùng ở ranh giới.
 

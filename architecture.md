@@ -35,6 +35,8 @@ RedisInsight không nằm trong luồng xử lý yêu cầu của Client. Backen
 
 ### 4.1. Firestore — dữ liệu chính
 
+Thiết kế triển khai chi tiết: [Dữ liệu Firestore và ánh xạ Redis](firestore-data-design.md). Tài liệu này chuẩn hóa field sang `snake_case`, bổ sung lịch sử phiên, sự kiện, bộ đếm lưu bền và checkpoint đồng bộ; cấu trúc ví dụ bên dưới chỉ là phác thảo ban đầu.
+
 Đề xuất dùng collection `users`, mỗi document ứng với một `userId` ổn định.
 
 ```text
