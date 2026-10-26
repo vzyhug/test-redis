@@ -1,0 +1,293 @@
+HƯỚNG DẪN TRIỂN KHAI PHẦN DỮ LIỆU: FIRESTORE + REDIS + REDISINSIGHT DESKTOP
+Áp dụng cho Windows / PowerShell. Đối chiếu tài liệu chính thức ngày 26/10/2026.
+
+1. MÔ HÌNH KẾT NỐI
+
+  Backend trên Windows --> Firestore trên Firebase: lưu tài khoản và lịch sử lâu dài.
+  Backend trên Windows --> Redis trong Docker, cổng 6379: lưu phiên và dữ liệu nhanh.
+  RedisInsight Desktop --> Redis trong Docker, cổng 6379: xem key, chạy lệnh.
+
+RedisInsight là giao diện quản lý. Cài RedisInsight chưa có nghĩa là Redis server đã chạy.
+Firestore và Redis cũng không tự đồng bộ với nhau; việc đó do backend/worker thực hiện.
+Các bước dưới đây thiết lập và kiểm tra kết nối, chưa triển khai toàn bộ backend đăng nhập.
+
+2. CHUẨN BỊ
+
+- Docker Desktop đang chạy, dùng Linux containers.
+- RedisInsight Desktop cho Windows.
+- Tài khoản Google để dùng Firebase Console.
+- Node.js 22+ nếu muốn chạy ví dụ kiểm tra kết nối ở mục 7.
+  Node.js chỉ là lựa chọn cho ví dụ; database không bắt buộc backend dùng Node.js.
+
+Kiểm tra trong PowerShell:
+
+  docker version
+  node --version
+  npm.cmd --version
+
+Nếu docker chỉ hiện Client rồi báo không kết nối được daemon: mở Docker Desktop,
+đợi engine chạy xong rồi thử lại.
+
+3. TẠO FIRESTORE
+
+1) Mở https://console.firebase.google.com/ và tạo/chọn một project.
+2) Vào Firestore Database, hoặc Databases & Storage > Firestore tùy giao diện.
+3) Chọn Create database; dùng Firestore Standard / Native mode, database (default).
+   Không chọn Realtime Database hay MongoDB compatibility cho thiết kế này.
+4) Chọn location phù hợp nơi đặt backend; ví dụ Singapore nếu có trong danh sách.
+   Kiểm tra kỹ location trước khi tạo, không giả định có thể đổi trực tiếp về sau.
+5) Chọn Production mode vì ứng dụng truy cập qua backend.
+   Mode này chặn mobile/web client trực tiếp; server xác thực bằng IAM vẫn có thể truy cập.
+6) Hoàn tất tạo database, ghi lại Project ID trong Project settings > General.
+   Project ID Firebase không nhất thiết trùng tên repo test-redis.
+
+Firestore không cần tạo schema SQL. Collection/document xuất hiện khi có bản ghi đầu tiên.
+Có thể tạo trước tài khoản mẫu bằng Data > Start collection:
+
+  Collection ID: users
+  Document ID: u001
+
+  Field                 Type       Value
+  user_id               string     u001
+  username              string     hung
+  display_name          string     Duy Hưng
+  email                 string     hung@example.com
+  email_verified        boolean    false
+  avatar_url            null       null
+  status                string     active
+  auth_provider         string     demo
+  auth_subject          string     demo-u001
+  created_at            timestamp  Chọn ngày giờ hiện tại
+  updated_at            timestamp  Chọn ngày giờ hiện tại
+  status_changed_at     timestamp  Chọn ngày giờ hiện tại
+  schema_version        number     1
+
+Tài khoản mẫu này chỉ là dữ liệu hồ sơ, không tạo được thông tin xác thực/mật khẩu.
+Các collection user_auth_stats, session_history, activity_events, system_auth_stats,
+auth_event_receipts, auth_sync_checkpoints sẽ do backend/worker ghi theo thiết kế.
+
+4. CẤP THÔNG TIN KẾT NỐI FIRESTORE CHO BACKEND LOCAL
+
+1) Firebase Console > Project settings > Service accounts.
+2) Chọn Firebase Admin SDK > Generate new private key > Generate key.
+   Nếu tổ chức cấm tạo key, dùng Application Default Credentials được quản trị cấp;
+   không cần mở quyền đọc/ghi công khai cho Firestore để né lỗi này.
+3) Lưu JSON ở thư mục riêng ngoài repo, ví dụ:
+
+   C:\Users\duyhu\.secrets\test-redis-admin.json
+
+4) Trong PowerShell sẽ chạy backend, đặt biến môi trường:
+
+   $env:GOOGLE_APPLICATION_CREDENTIALS = 'C:\Users\duyhu\.secrets\test-redis-admin.json'
+   $env:FIREBASE_PROJECT_ID = 'your-firebase-project-id'
+
+Thay your-firebase-project-id bằng Project ID thật; sửa đường dẫn nếu lưu file nơi khác.
+Các biến $env: ở đây có hiệu lực trong cửa sổ PowerShell hiện tại và tiến trình con.
+GOOGLE_APPLICATION_CREDENTIALS là ĐƯỜNG DẪN đến JSON, không phải nội dung JSON.
+Không gửi file private key lên GitHub hoặc cho frontend. Không cần apiKey Web để dùng
+Firebase Admin SDK trong ví dụ server này; cũng không cần databaseURL Realtime Database.
+
+5. CHẠY REDIS SERVER BẰNG DOCKER
+
+Chạy trong PowerShell. Dòng docker run dưới đây là một dòng duy nhất:
+
+  docker volume create login-demo-redis-data
+  docker run -d --name login-demo-redis -p 127.0.0.1:6379:6379 -v login-demo-redis-data:/data redis:7.4 redis-server --appendonly yes --appendfsync everysec --maxmemory-policy noeviction
+
+Lựa chọn redis:7.4 phù hợp mục tiêu Redis 7+ trong tài liệu. Volume /data giữ dữ liệu
+khi container bị thay thế nếu vẫn dùng lại volume đó. AOF everysec không bảo đảm không
+mất ghi gần nhất khi sự cố. Chưa giới hạn maxmemory; cần cấu hình theo RAM khi chạy thật.
+
+Kiểm tra:
+
+  docker ps --filter name=login-demo-redis
+  docker exec login-demo-redis redis-cli PING
+
+Kết quả mong đợi: PONG.
+
+Lần sau muốn chạy lại container đã tồn tại:
+
+  docker start login-demo-redis
+
+Muốn tạm dừng:
+
+  docker stop login-demo-redis
+
+Không chạy docker run lần nữa cùng tên khi container đã tồn tại.
+Ở cấu hình demo này chưa bật password/TLS và chỉ publish cổng vào loopback Windows.
+Không đổi sang publish public nếu chưa cấu hình bảo vệ phù hợp.
+
+6. KẾT NỐI REDISINSIGHT DESKTOP
+
+Tải/cài bản Windows từ trang chính thức:
+https://redis.io/docs/latest/operate/redisinsight/install/install-on-desktop/
+
+Mở ứng dụng > Add Redis database / Add database > nhập kết nối thủ công.
+Tên nút có thể khác nhẹ theo phiên bản. Điền theo Redis local vừa chạy:
+
+  Database alias/name:  login-demo-local
+  Host:                 127.0.0.1
+  Port:                 6379
+  Username:             default (hoặc để trống nếu form cho phép)
+  Password:             Để trống với container demo trên
+  TLS/SSL:              Tắt với container demo trên
+  Database index:       0 nếu có tùy chọn
+
+Nếu nhập bằng URI: redis://127.0.0.1:6379
+Chọn kiểm tra kết nối nếu có, rồi lưu/mở database.
+Trong CLI hoặc Workbench của RedisInsight, chạy từng lệnh:
+
+  PING
+  HSET auth:account:u001 user_id u001 username hung display_name "Duy Hưng" email hung@example.com status active
+  EXPIRE auth:account:u001 900
+  HGETALL auth:account:u001
+  TTL auth:account:u001
+
+Kết quả: PONG; Hash có field vừa nhập; TTL còn khoảng 900 giây.
+Mở Browser, tìm auth:* và refresh để xem key.
+Đây là bản cache mẫu tối giản. Muốn đủ field, dùng redis-commands.txt hoặc mục 7.
+
+Lưu ý: desktop RedisInsight kết nối host 127.0.0.1. Nếu sau này backend nằm trong
+container khác thì localhost ở container không phải Redis; cần cấu hình network/host
+phù hợp. File này đang giả định backend chạy trực tiếp trên Windows.
+
+7. KIỂM TRA BACKEND KẾT NỐI CẢ HAI DATABASE - VÍ DỤ NODE.JS
+
+Để không tạo thêm ứng dụng trong repo tài liệu, dùng một thư mục thử riêng ngoài repo.
+Chạy trong cùng cửa sổ PowerShell đã đặt các biến ở mục 4:
+
+  New-Item -ItemType Directory -Force "$env:USERPROFILE\redis-firestore-check"
+  Set-Location "$env:USERPROFILE\redis-firestore-check"
+  npm.cmd init -y
+  npm.cmd install firebase-admin redis
+  $env:REDIS_URL = 'redis://127.0.0.1:6379'
+
+Tạo file check-connections.mjs trong thư mục này, dán đoạn sau:
+
+----- BẮT ĐẦU NỘI DUNG check-connections.mjs -----
+import { initializeApp, applicationDefault } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { createClient } from 'redis';
+
+if (!process.env.FIREBASE_PROJECT_ID || !process.env.REDIS_URL) {
+  throw new Error('Thieu FIREBASE_PROJECT_ID hoac REDIS_URL');
+}
+
+initializeApp({
+  credential: applicationDefault(),
+  projectId: process.env.FIREBASE_PROJECT_ID,
+});
+
+const db = getFirestore();
+const redis = createClient({ url: process.env.REDIS_URL });
+redis.on('error', (err) => console.error('Redis:', err.message));
+
+try {
+  const snapshot = await db.collection('users').doc('u001').get();
+  if (!snapshot.exists) throw new Error('Hay tao users/u001 theo muc 3');
+  const user = snapshot.data();
+  if (!user.created_at?.toMillis || !user.updated_at?.toMillis) {
+    throw new Error('created_at va updated_at phai la Timestamp');
+  }
+  console.log('Firestore OK: doc duoc users/u001');
+
+  await redis.connect();
+  console.log('Redis:', await redis.ping());
+  await redis.multi()
+    .hSet('auth:account:u001', {
+      user_id: snapshot.id,
+      username: user.username ?? '',
+      display_name: user.display_name ?? '',
+      email: user.email ?? '',
+      status: user.status,
+      created_at: String(user.created_at.toMillis()),
+      profile_updated_at: String(user.updated_at.toMillis()),
+      cached_at: String(Date.now()),
+    })
+    .expire('auth:account:u001', 900)
+    .exec();
+  console.log('Da nap cache tai khoan, TTL:', await redis.ttl('auth:account:u001'));
+} catch (err) {
+  console.error('Kiem tra that bai:', err.message);
+  process.exitCode = 1;
+} finally {
+  if (redis.isOpen) redis.destroy();
+  await db.terminate();
+}
+----- KẾT THÚC NỘI DUNG check-connections.mjs -----
+
+Chạy:
+
+  node check-connections.mjs
+
+Kết quả mong đợi:
+
+  Firestore OK: doc duoc users/u001
+  Redis: PONG
+  Da nap cache tai khoan, TTL: 900
+
+Refresh RedisInsight: key auth:account:u001 có dữ liệu từ Firestore.
+Ví dụ này không tạo phiên đăng nhập, không xác thực mật khẩu và không phải worker.
+Nó minh họa backend đọc Firestore rồi ghi cache Redis qua thư viện.
+
+8. TẠO INDEXES CHO CÁC MÀN HÌNH LỊCH SỬ
+
+Firestore Console > Indexes > Composite > Create index.
+Tạo 6 index được mô tả trong firestore.indexes.json của repo, query scope Collection:
+
+  session_history: user_id ASC, created_at DESC
+  session_history: user_id ASC, status ASC, created_at DESC
+  activity_events: user_id ASC, occurred_at DESC
+  activity_events: user_id ASC, event_type ASC, occurred_at DESC
+  activity_events: user_id ASC, session_ref ASC, occurred_at DESC
+  activity_events: event_type ASC, occurred_at DESC
+
+Đợi index xây dựng xong trước khi thử truy vấn tương ứng. Đọc thẳng users/u001 ở mục 7
+không cần các composite index này. Chỉ có file JSON trong repo chưa tự tạo index Firebase.
+TTL policy cho expire_at là cấu hình riêng, chưa cần bật để kiểm tra kết nối.
+
+9. LỖI THƯỜNG GẶP
+
+- ECONNREFUSED 127.0.0.1:6379:
+  Kiểm tra Docker Desktop, docker ps và docker exec ... redis-cli PING.
+- Port 6379 đã được dùng:
+  Kiểm tra Redis/container đang chạy; có thể dùng mapping 127.0.0.1:6380:6379 cho container
+  mới rồi đổi port RedisInsight và REDIS_URL thành 6380 tương ứng.
+- Docker báo container name đã tồn tại:
+  Dùng docker start login-demo-redis; không cần xóa volume dữ liệu.
+- NOAUTH hoặc WRONGPASS:
+  Đang kết nối Redis có password khác cấu hình demo; nhập đúng thông tin của instance đó.
+- Không tìm thấy default credentials / file JSON:
+  Kiểm tra đường dẫn GOOGLE_APPLICATION_CREDENTIALS trong đúng cửa sổ chạy node.
+- Firestore PERMISSION_DENIED:
+  Kiểm tra đúng Project ID, service account và IAM; không mở Rules public để sửa lỗi Admin SDK.
+- Firestore database không tồn tại / NOT_FOUND:
+  Kiểm tra đã tạo database (default) trong đúng project.
+- Báo thiếu users/u001:
+  Tạo document mẫu ở mục 3; collection không được tạo chỉ bằng việc viết tài liệu schema.
+- RedisInsight không thấy key vừa ghi:
+  Kiểm tra đúng host/port, DB 0, refresh Browser; key cache có thể đã hết TTL.
+
+10. TIÊU CHÍ HOÀN THÀNH PHẦN KẾT NỐI
+
+[ ] Firebase Console có database và users/u001 đúng kiểu dữ liệu.
+[ ] Có credential backend riêng, được giữ ngoài repo.
+[ ] docker exec login-demo-redis redis-cli PING trả PONG.
+[ ] RedisInsight Desktop kết nối được 127.0.0.1:6379 và thấy key auth:*.
+[ ] Chương trình kiểm tra đọc được Firestore và ghi cache Redis.
+[ ] Đã hiểu backend/worker phải được viết tiếp để thực hiện luồng đăng nhập và lưu lịch sử.
+
+TÀI LIỆU CHÍNH THỨC
+
+Firestore tạo database và chọn production mode:
+https://firebase.google.com/docs/firestore/quickstart
+Firebase Admin SDK và GOOGLE_APPLICATION_CREDENTIALS:
+https://firebase.google.com/docs/admin/setup
+Redis Docker và lưu dữ liệu trong /data:
+https://redis.io/docs/latest/operate/oss_and_stack/install/install-stack/docker/
+RedisInsight Desktop:
+https://redis.io/docs/latest/operate/redisinsight/install/install-on-desktop/
+Node Redis client:
+https://redis.io/docs/latest/develop/clients/nodejs/connect/
+Firestore indexes:
+https://firebase.google.com/docs/firestore/query-data/index-overview
