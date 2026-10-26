@@ -50,6 +50,8 @@ Các trường trên là ví dụ thiết kế, không phải cấu trúc đã c
 
 ### 4.2. Redis — session, token và cache
 
+Thiết kế chi tiết cho phương án session phía server: [Dữ liệu Redis cho quản lý phiên đăng nhập](redis-data-design.md), gồm tài khoản, chi tiết/danh sách phiên, bộ đếm đăng nhập, người dùng hoạt động và lịch sử.
+
 | Nhóm dữ liệu | Ví dụ key đề xuất | Nội dung | Thời hạn |
 | --- | --- | --- | --- |
 | Session | `session:{sessionId}` | `userId`, thời điểm tạo, metadata tối thiểu | Theo thời gian sống của session |
