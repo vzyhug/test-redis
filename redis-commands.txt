@@ -1,0 +1,246 @@
+# CÁC LỆNH THIẾT KẾ DỮ LIỆU REDIS
+# Nguồn: redis-data-design.md
+# Môi trường: Redis 7+, một primary; dùng trong redis-cli hoặc RedisInsight.
+# Redis không cần CREATE TABLE: key được tạo khi ghi dữ liệu lần đầu.
+# Chỉ là danh mục lệnh theo từng nghiệp vụ, KHÔNG chạy toàn bộ file lần lượt.
+# Chọn khối cần dùng và thay tất cả <THAM_SO> trước khi chạy.
+# Không chạy file này bằng PowerShell/bash: đây là lệnh Redis, không phải lệnh shell.
+# Không chứa cấu hình kết nối, secret thật hoặc code worker Firestore.
+#
+# QUY ƯỚC THAM SỐ
+# u001                  : user_id ví dụ, thay bằng uid thật trong Firestore.
+# <SID_HASH>            : SHA-256 của secret cookie do backend sinh; không phải secret.
+# <SESSION_REF>         : HMAC-SHA256 đầy đủ trên sid, dùng khóa tham chiếu riêng.
+# <IDENTIFIER_DIGEST>   : HMAC-SHA256 định danh đăng nhập đã chuẩn hóa.
+# <IP_DIGEST>           : HMAC-SHA256 IP, không dùng email/IP thô trong key.
+# <OPERATION_ID>        : ID ổn định cho một thao tác login, giữ nguyên khi retry nội bộ.
+# <EVENT_ID>            : UUID duy nhất cho một sự kiện, giữ nguyên khi gửi lại.
+# <SOURCE_EPOCH>        : UUID thế hệ dữ liệu Redis.
+# <REQUEST_ID>          : ID theo dõi request.
+# <NOW_MS>              : thời gian hiện tại tính bằng milliseconds UTC.
+# <ACCOUNT_CREATED_MS>  : thời điểm tạo tài khoản gốc.
+# <PROFILE_UPDATED_MS>  : thời điểm cập nhật hồ sơ gốc.
+# <COUNTING_STARTED_MS> : mốc bắt đầu ghi nhận thống kê chung, không reset khi retry.
+# <ABSOLUTE_MS>         : thời điểm tạo phiên + 604800000 (7 ngày), cố định suốt phiên.
+# <EXPIRES_MS>          : min(NOW_MS + 1800000, ABSOLUTE_MS), idle timeout 30 phút.
+# <ONLINE_UNTIL_MS>     : min(NOW_MS + 300000, EXPIRES_MS), online trong 5 phút.
+# Các thời điểm số nguyên được thay vào không có dấu < > và không có dấu phân cách.
+# Các giá trị UA/IP bên dưới chỉ là dữ liệu mẫu.
+
+
+# 1. KIỂM TRA KẾT NỐI VÀ LẤY GIỜ SERVER
+PING
+TIME
+# TIME trả [seconds, microseconds]. Backend tính NOW_MS = seconds*1000 + floor(microseconds/1000).
+
+
+# 2. THÔNG TIN TÀI KHOẢN - HASH, CACHE 15 PHÚT
+# Dữ liệu gốc lấy từ Firestore. Cache này không quyết định quyền đăng nhập.
+MULTI
+HSET auth:account:u001 user_id u001 username hung display_name "Duy Hưng" email hung@example.com status active created_at <ACCOUNT_CREATED_MS> profile_updated_at <PROFILE_UPDATED_MS> cached_at <NOW_MS>
+EXPIRE auth:account:u001 900
+EXEC
+
+# Đọc thông tin hoặc một số field.
+HGETALL auth:account:u001
+HMGET auth:account:u001 username display_name email status
+TTL auth:account:u001
+
+# Sau khi cập nhật hồ sơ gốc ở Firestore, vô hiệu hóa cache để nạp lại.
+DEL auth:account:u001
+# Lệnh DEL trên là ví dụ độc lập; không chạy nếu đang muốn giữ cache mẫu vừa tạo.
+
+
+# 3. KHỞI TẠO THỐNG KÊ - HASH, KHÔNG TTL
+# HSETNX chỉ khởi tạo field chưa tồn tại, không ghi đè tổng cũ.
+HSETNX auth:user:u001:stats login_success_total 0
+HSETNX auth:user:u001:stats login_failed_total 0
+HSETNX auth:user:u001:stats counting_started_at <COUNTING_STARTED_MS>
+HSETNX auth:stats login_success_total 0
+HSETNX auth:stats login_failed_total 0
+HSETNX auth:stats login_failed_unknown_total 0
+HSETNX auth:stats counting_started_at <COUNTING_STARTED_MS>
+# Các mốc last_login_at, last_failed_login_at, last_activity_at chưa có nghĩa là chưa ghi nhận.
+
+
+# 4. ĐĂNG NHẬP THÀNH CÔNG - PHIÊN, DANH SÁCH PHIÊN, ONLINE, THỐNG KÊ, LOG
+# Trước khi ghi: backend phải xác thực tài khoản gốc, kiểm tra operation chưa xử lý,
+# kiểm tra phiên trùng và số phiên hợp lệ < 5, đồng thời phối hợp với luồng khóa tài khoản.
+# Các truy vấn sau chỉ để quan sát, không tạo ràng buộc nguyên tử với khối ghi bên dưới.
+HGETALL auth:login-op:<OPERATION_ID>
+EXISTS auth:session:<SID_HASH>
+ZCOUNT auth:user:u001:sessions (<NOW_MS> +inf
+# Backend bỏ các index trỏ tới Hash đã mất và ghi audit theo mục 12 trước khi chốt giới hạn.
+# Nếu operation đã hoàn tất thì trả lại kết quả đã có; không chạy lại khối tăng bộ đếm.
+# Trong backend thật, gộp kiểm tra + khối ghi vào Lua script; MULTI đơn thuần không có IF.
+
+MULTI
+HSET auth:session:<SID_HASH> user_id u001 created_at <NOW_MS> last_seen_at <NOW_MS> absolute_expires_at <ABSOLUTE_MS> expires_at <EXPIRES_MS> ip_created 192.0.2.10 ip_last 192.0.2.10 user_agent "Mozilla/5.0 demo" device_name "Chrome / Windows" auth_method password schema_version 1
+PEXPIREAT auth:session:<SID_HASH> <EXPIRES_MS>
+ZADD auth:user:u001:sessions <EXPIRES_MS> <SID_HASH>
+ZADD auth:user:u001:presence <ONLINE_UNTIL_MS> <SID_HASH>
+ZADD auth:online:users GT <ONLINE_UNTIL_MS> u001
+HINCRBY auth:user:u001:stats login_success_total 1
+HSET auth:user:u001:stats last_login_at <NOW_MS> last_activity_at <NOW_MS>
+HINCRBY auth:stats login_success_total 1
+XADD auth:user:u001:activities * event_id <EVENT_ID> event_type login_success user_id u001 session_ref <SESSION_REF> source_epoch <SOURCE_EPOCH> occurred_at <NOW_MS> ip 192.0.2.10 device_name "Chrome / Windows" result success reason "" request_id <REQUEST_ID> payload '{"created_at_ms":<NOW_MS>,"last_seen_at_ms":<NOW_MS>,"expires_at_ms":<EXPIRES_MS>,"absolute_expires_at_ms":<ABSOLUTE_MS>,"ip_created":"192.0.2.10","ip_last":"192.0.2.10","user_agent":"Mozilla/5.0 demo","device_name":"Chrome / Windows","auth_method":"password"}'
+HSET auth:login-op:<OPERATION_ID> result success user_id u001 sid <SID_HASH> event_type login_success event_id <EVENT_ID>
+EXPIRE auth:login-op:<OPERATION_ID> 86400
+EXEC
+# ZADD GT giữ score online lớn hơn đã có từ thiết bị khác, đồng thời thêm user nếu chưa có.
+# Chỉ trả cookie khi việc tạo phiên được xác nhận; cookie không chứa SID_HASH mà chứa secret gốc.
+
+
+# 5. ĐỌC CHI TIẾT VÀ DANH SÁCH PHIÊN
+HGETALL auth:session:<SID_HASH>
+HMGET auth:session:<SID_HASH> user_id device_name created_at last_seen_at expires_at absolute_expires_at
+PTTL auth:session:<SID_HASH>
+ZRANGEBYSCORE auth:user:u001:sessions (<NOW_MS> +inf WITHSCORES
+ZCOUNT auth:user:u001:sessions (<NOW_MS> +inf
+# Mỗi sid lấy được phải đọc lại Hash; index có thể còn member khi Hash đã mất.
+# Score = NOW_MS là hết hạn. Không dùng ZCARD để đếm phiên còn hạn khi chưa dọn index.
+
+
+# 6. REQUEST / HEARTBEAT - GIA HẠN PHIÊN, KHÔNG TĂNG LOGIN TOTAL
+# Script ngắn dưới đây chỉ thực hiện kiểm tra và cập nhật heartbeat.
+# Dùng KEYS: session, sessions, presence, online-users, user-stats.
+# ARGV: uid, sid, ip. Script tự lấy giờ, không hồi sinh Hash đã bị xóa.
+# Không phát snapshot trong script này; snapshot lấy mẫu ở mục 10.
+EVAL "local t=redis.call('TIME'); local n=tonumber(t[1])*1000+math.floor(tonumber(t[2])/1000); local s=redis.call('HMGET',KEYS[1],'user_id','expires_at','absolute_expires_at'); if s[1]~=ARGV[1] or not s[2] or not s[3] or tonumber(s[2])<=n or tonumber(s[3])<=n then return redis.error_reply('SESSION_INVALID') end; local e=math.min(n+1800000,tonumber(s[3])); local o=math.min(n+300000,e); redis.call('HSET',KEYS[1],'last_seen_at',n,'expires_at',e,'ip_last',ARGV[3]); redis.call('PEXPIREAT',KEYS[1],e); redis.call('ZADD',KEYS[2],e,ARGV[2]); redis.call('ZADD',KEYS[3],o,ARGV[2]); redis.call('ZREMRANGEBYSCORE',KEYS[3],'-inf',n); local top=redis.call('ZREVRANGE',KEYS[3],0,0,'WITHSCORES'); if #top>0 then redis.call('ZADD',KEYS[4],top[2],ARGV[1]) else redis.call('ZREM',KEYS[4],ARGV[1]) end; redis.call('HSET',KEYS[5],'last_activity_at',n); return {n,e,o}" 5 auth:session:<SID_HASH> auth:user:u001:sessions auth:user:u001:presence auth:online:users auth:user:u001:stats u001 <SID_HASH> 192.0.2.10
+
+
+# 7. ĐĂNG NHẬP SAI - TÀI KHOẢN CÓ THẬT
+# Chỉ dùng khi xác thực sai; không dùng cho Redis lỗi, tài khoản khóa hoặc vượt giới hạn phiên.
+# Operation phải chưa được xử lý. Với backend thật, chống lặp và khối ghi nằm trong cùng Lua.
+MULTI
+HINCRBY auth:user:u001:stats login_failed_total 1
+HSET auth:user:u001:stats last_failed_login_at <NOW_MS>
+HINCRBY auth:stats login_failed_total 1
+XADD auth:user:u001:activities * event_id <EVENT_ID> event_type login_failed user_id u001 session_ref "" source_epoch <SOURCE_EPOCH> occurred_at <NOW_MS> ip 192.0.2.10 device_name "Chrome / Windows" result failure reason invalid_credentials request_id <REQUEST_ID> payload '{}'
+HSET auth:login-op:<OPERATION_ID> result failure user_id u001 event_type login_failed event_id <EVENT_ID>
+EXPIRE auth:login-op:<OPERATION_ID> 86400
+EXEC
+
+
+# 8. ĐĂNG NHẬP SAI - KHÔNG XÁC ĐỊNH ĐƯỢC TÀI KHOẢN
+# user_id rỗng để worker chuyển thành null. Không tạo user giả.
+MULTI
+HINCRBY auth:stats login_failed_total 1
+HINCRBY auth:stats login_failed_unknown_total 1
+XADD auth:unknown:activities * event_id <EVENT_ID> event_type login_failed user_id "" session_ref "" source_epoch <SOURCE_EPOCH> occurred_at <NOW_MS> ip 192.0.2.10 device_name "Chrome / Windows" result failure reason invalid_credentials request_id <REQUEST_ID> identifier_digest <IDENTIFIER_DIGEST> payload '{}'
+HSET auth:login-op:<OPERATION_ID> result failure user_id "" event_type login_failed event_id <EVENT_ID>
+EXPIRE auth:login-op:<OPERATION_ID> 86400
+EXEC
+
+
+# 9. GIỚI HẠN THỬ SAI TRONG CỬA SỔ 15 PHÚT
+# Gọi sau một lỗi xác thực ở mục 7 HOẶC 8, không gọi cho cả hai.
+# Script đặt TTL chỉ ở lỗi đầu tiên; lỗi sau không kéo dài cửa sổ.
+# Khi triển khai, nhập đoạn này vào script xử lý lỗi có chống lặp operation,
+# tránh retry cùng login làm tăng bộ đếm cửa sổ lần nữa.
+EVAL "local a=redis.call('INCR',KEYS[1]); if a==1 then redis.call('EXPIRE',KEYS[1],900) end; local b=redis.call('INCR',KEYS[2]); if b==1 then redis.call('EXPIRE',KEYS[2],900) end; return {a,b}" 2 auth:fail:identifier:<IDENTIFIER_DIGEST> auth:fail:ip:<IP_DIGEST>
+GET auth:fail:identifier:<IDENTIFIER_DIGEST>
+TTL auth:fail:identifier:<IDENTIFIER_DIGEST>
+GET auth:fail:ip:<IP_DIGEST>
+TTL auth:fail:ip:<IP_DIGEST>
+# Backend chặn lần thử tiếp theo khi số lỗi định danh >= 5 hoặc lỗi IP >= 50.
+# Không xóa tổng lỗi lịch sử khi cửa sổ này hết hạn hoặc login thành công.
+
+
+# 10. THEO DÕI ONLINE VÀ GHI LỊCH SỬ HOẠT ĐỘNG
+ZRANGEBYSCORE auth:online:users (<NOW_MS> +inf WITHSCORES LIMIT 0 50
+ZCOUNT auth:online:users (<NOW_MS> +inf
+ZSCORE auth:online:users u001
+ZRANGEBYSCORE auth:user:u001:presence (<NOW_MS> +inf WITHSCORES
+# Backend so score user > NOW_MS để xác định online.
+
+# Lấy snapshot từ Hash hiện hành để thay tham số; không dùng thông tin phiên client tự khai.
+# Mỗi phiên hoạt động tối đa một snapshot/5 phút, có kiểm tra phiên còn hợp lệ trong cùng thao tác ghi.
+# Lệnh XADD riêng dưới đây minh họa dữ liệu entry, không tự thực hiện giới hạn lấy mẫu.
+XADD auth:user:u001:activities * event_id <EVENT_ID> event_type session_snapshot user_id u001 session_ref <SESSION_REF> source_epoch <SOURCE_EPOCH> occurred_at <NOW_MS> ip 192.0.2.10 device_name "Chrome / Windows" result success reason "" request_id <REQUEST_ID> payload '{"last_seen_at_ms":<NOW_MS>,"expires_at_ms":<EXPIRES_MS>,"ip_last":"192.0.2.10"}'
+
+# Ví dụ hoạt động cập nhật hồ sơ: chỉ ghi sau khi cập nhật nguồn gốc thành công.
+XADD auth:user:u001:activities * event_id <EVENT_ID> event_type profile_updated user_id u001 session_ref <SESSION_REF> source_epoch <SOURCE_EPOCH> occurred_at <NOW_MS> ip 192.0.2.10 device_name "Chrome / Windows" result success reason "" request_id <REQUEST_ID> payload '{}'
+
+# Xem lịch sử và phân trang. <LAST_STREAM_ID> là ID Redis của entry cuối trang trước.
+XREVRANGE auth:user:u001:activities + - COUNT 20
+XREVRANGE auth:user:u001:activities (<LAST_STREAM_ID> - COUNT 20
+XLEN auth:user:u001:activities
+XREVRANGE auth:unknown:activities + - COUNT 20
+
+
+# 11. ĐĂNG XUẤT / THU HỒI MỘT PHIÊN
+# Backend xác thực chủ phiên/quyền quản trị trước khi gọi.
+# Script kiểm tra user_id, xóa phiên/index, tính online từ thiết bị còn lại, ghi một sự kiện.
+# Retry sau khi Hash mất trả 0 và không ghi thêm event. Cookie phải được backend xóa riêng.
+# KEYS: session, sessions, presence, online-users, activities.
+# ARGV: uid, sid, event-id, session-ref, source-epoch, request-id, loại, lý-do.
+# Loại hợp lệ: logout hoặc session_revoked. Chọn một loại cho mỗi thao tác.
+EVAL "if redis.call('EXISTS',KEYS[1])==0 then return 0 end; if redis.call('HGET',KEYS[1],'user_id')~=ARGV[1] then return redis.error_reply('NOT_OWNER') end; if ARGV[7]~='logout' and ARGV[7]~='session_revoked' then return redis.error_reply('INVALID_EVENT_TYPE') end; local t=redis.call('TIME'); local n=tonumber(t[1])*1000+math.floor(tonumber(t[2])/1000); local s=redis.call('HMGET',KEYS[1],'last_seen_at','expires_at','ip_last','device_name'); local p=cjson.encode({last_seen_at_ms=tonumber(s[1]),expires_at_ms=tonumber(s[2]),ip_last=s[3] or ''}); redis.call('DEL',KEYS[1]); redis.call('ZREM',KEYS[2],ARGV[2]); redis.call('ZREM',KEYS[3],ARGV[2]); redis.call('ZREMRANGEBYSCORE',KEYS[3],'-inf',n); local top=redis.call('ZREVRANGE',KEYS[3],0,0,'WITHSCORES'); if #top>0 then redis.call('ZADD',KEYS[4],top[2],ARGV[1]) else redis.call('ZREM',KEYS[4],ARGV[1]) end; redis.call('XADD',KEYS[5],'*','event_id',ARGV[3],'event_type',ARGV[7],'user_id',ARGV[1],'session_ref',ARGV[4],'source_epoch',ARGV[5],'occurred_at',n,'ip',s[3] or '','device_name',s[4] or '','result','success','reason',ARGV[8],'request_id',ARGV[6],'payload',p); return 1" 5 auth:session:<SID_HASH> auth:user:u001:sessions auth:user:u001:presence auth:online:users auth:user:u001:activities u001 <SID_HASH> <EVENT_ID> <SESSION_REF> <SOURCE_EPOCH> <REQUEST_ID> logout user_logout
+
+# Để thu hồi quản trị: dùng cùng script, thay hai ARGV cuối bằng session_revoked admin_revoke.
+# Thu hồi tất cả: phối hợp khóa theo uid với login, lấy tối đa 5 sid từ danh sách phiên,
+# áp dụng luồng thu hồi cho mỗi sid với EVENT_ID/SESSION_REF tương ứng và giữ chặn login
+# đến khi hoàn tất. Không chỉ DEL sessions vì các Hash phiên vẫn có thể xác thực được.
+# Khi khóa tài khoản: cập nhật Firestore, thu hồi phiên rồi vô hiệu hóa auth:account:u001;
+# chỉ HSET status locked trong cache không khóa được tài khoản gốc.
+
+
+# 12. PHIÊN HẾT HẠN VÀ DỌN CHỈ MỤC
+# Phát hiện theo lô; không dùng KEYS trên dữ liệu lớn.
+SCAN 0 MATCH auth:user:*:sessions COUNT 100
+# Tiếp tục SCAN với cursor trả về đến 0; mỗi vòng có thể trả key lặp.
+ZRANGEBYSCORE auth:user:u001:sessions -inf <NOW_MS> WITHSCORES LIMIT 0 100
+# <EXPIRED_SID> là sid tìm được; <SESSION_REF> tương ứng do backend tính.
+# Script lấy giờ và kiểm tra lại score để không xóa phiên vừa được heartbeat gia hạn.
+# Thời điểm sự kiện lấy từ score hết hạn; không lấy giờ worker phát hiện làm giờ hết hạn.
+EVAL "local t=redis.call('TIME'); local n=tonumber(t[1])*1000+math.floor(tonumber(t[2])/1000); local e=redis.call('ZSCORE',KEYS[1],ARGV[2]); if not e or tonumber(e)>n then return 0 end; redis.call('ZREM',KEYS[1],ARGV[2]); redis.call('ZREM',KEYS[2],ARGV[2]); redis.call('ZREMRANGEBYSCORE',KEYS[2],'-inf',n); local top=redis.call('ZREVRANGE',KEYS[2],0,0,'WITHSCORES'); if #top>0 then redis.call('ZADD',KEYS[3],top[2],ARGV[1]) else redis.call('ZREM',KEYS[3],ARGV[1]) end; redis.call('XADD',KEYS[4],'*','event_id',ARGV[3],'event_type','session_expired','user_id',ARGV[1],'session_ref',ARGV[4],'source_epoch',ARGV[5],'occurred_at',e,'ip','','device_name','','result','success','reason','timeout','request_id',ARGV[6],'payload','{}'); return 1" 4 auth:user:u001:sessions auth:user:u001:presence auth:online:users auth:user:u001:activities u001 <EXPIRED_SID> <EVENT_ID> <SESSION_REF> <SOURCE_EPOCH> <REQUEST_ID>
+# Hash phiên tự hết hạn theo PEXPIREAT; không cần tạo lại Hash để đánh dấu expired.
+# Với member chưa đến hạn mà Hash mất: backend cần luồng tương tự, kiểm tra lại Hash
+# và score trong script rồi ghi session_missing, không gộp với timeout bình thường.
+
+# Chỉ mục presence/online hết hạn có thể dọn độc lập; không xóa sessions trước khi ghi audit.
+ZREMRANGEBYSCORE auth:user:u001:presence -inf <NOW_MS>
+ZREMRANGEBYSCORE auth:online:users -inf <NOW_MS>
+
+
+# 13. ĐỌC STREAM CHO WORKER VÀ DỌN PHẦN ĐÃ LƯU BỀN
+# <CHECKPOINT_ID> là last_stream_id đã commit trong Firestore cho đúng Stream + epoch.
+# Nguồn mới chưa có checkpoint dùng 0-0. XREAD trả entry có ID lớn hơn checkpoint.
+XREAD COUNT 100 STREAMS auth:user:u001:activities <CHECKPOINT_ID>
+XREAD COUNT 100 STREAMS auth:unknown:activities <UNKNOWN_CHECKPOINT_ID>
+# Đọc các nguồn độc lập; không dùng một checkpoint user cho unknown hay ngược lại.
+# Worker ghi event + receipt + stats + session projection + checkpoint bằng transaction Firestore.
+# Chỉ trim khi Firestore đã xác nhận lưu bền đoạn bị xóa.
+# <SAFE_FIRST_KEPT_ID> do worker tính: mọi entry có ID nhỏ hơn ranh giới phải đã lưu bền
+# VÀ thuộc phần cần xóa do quá 30 ngày hoặc quá 10000 entry. Giữ entry tại ranh giới.
+XTRIM auth:user:u001:activities MINID = <SAFE_FIRST_KEPT_ID>
+# Không EXPIRE cả Stream; không XADD MAXLEN tùy ý vì có thể mất event chưa được xuất.
+
+
+# 14. KIỂM TRA THỐNG KÊ VÀ KIỂU DỮ LIỆU
+HGETALL auth:user:u001:stats
+HMGET auth:user:u001:stats login_success_total login_failed_total last_login_at last_failed_login_at last_activity_at counting_started_at
+HGETALL auth:stats
+HMGET auth:stats login_success_total login_failed_total login_failed_unknown_total counting_started_at
+TTL auth:user:u001:stats
+TTL auth:stats
+# TTL = -1: key có tồn tại và không có thời hạn. TTL = -2: key chưa tồn tại/đã mất.
+TYPE auth:account:u001
+TYPE auth:session:<SID_HASH>
+TYPE auth:user:u001:sessions
+TYPE auth:user:u001:stats
+TYPE auth:user:u001:presence
+TYPE auth:online:users
+TYPE auth:user:u001:activities
+TYPE auth:fail:identifier:<IDENTIFIER_DIGEST>
+TYPE auth:login-op:<OPERATION_ID>
+
+
+# LƯU Ý KHI TRIỂN KHAI
+# - MULTI/EXEC gom lệnh nhưng không tự kiểm tra điều kiện và không rollback lỗi từng lệnh.
+# - Các script minh họa giả định key đúng kiểu, field hợp lệ; cần kiểm tra đầu vào/kiểu key
+#   trước khi ghi trong bản triển khai. Lua cũng không rollback các lệnh đã chạy khi lỗi.
+# - Script nhiều key trong file dùng cho một primary, không chạy nguyên trạng trên Cluster.
+# - Không dùng file lệnh này thay thế backend xác thực, cookie/CSRF, worker hoặc khóa theo uid.
+# - Không dùng FLUSHDB/FLUSHALL để thử nghiệm trên database có dữ liệu thật.
