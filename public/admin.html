@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Quản trị phiên Redis Session Manager" />
+  <title>Quản trị hệ thống | Redis Session Manager</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">Redis Session Manager · Quản trị</header>
+  <main class="container admin-container">
+    <h1>Quản trị hệ thống</h1>
+    <p class="subtitle">Theo dõi tài khoản và quản lý các phiên đang hoạt động.</p>
+    <p id="adminNotice" class="notice" role="status" aria-live="polite" hidden></p>
+    <section class="admin-stats" id="overview" aria-label="Tổng quan hệ thống">
+      <article class="card"><span>Tổng tài khoản</span><strong id="totalUsers">—</strong></article>
+      <article class="card"><span>Tài khoản có phiên</span><strong id="activeAccounts">—</strong></article>
+      <article class="card"><span>Phiên đang hoạt động</span><strong id="activeSessions">—</strong></article>
+      <article class="card"><span>Phiên USER / ADMIN</span><strong id="roleSessions">—</strong></article>
+    </section>
+    <section class="card">
+      <div class="card-head admin-search-head">
+        <div><h2>Tài khoản</h2><p class="muted">Tìm kiếm theo username hoặc user ID.</p></div>
+        <form id="searchForm" class="admin-search">
+          <input id="userSearch" type="search" maxlength="64" placeholder="Tìm tài khoản…" aria-label="Tìm username hoặc user ID" />
+          <button class="btn btn-primary" type="submit">Tìm</button>
+          <button id="adminRefresh" class="btn btn-ghost" type="button" aria-label="Làm mới dữ liệu">Làm mới</button>
+        </form>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>User ID</th><th>Tài khoản</th><th>Email</th><th>Vai trò</th><th>Phiên hoạt động</th><th>Thao tác</th></tr></thead>
+        <tbody id="usersTable"><tr><td colspan="6" class="empty">Đang tải tài khoản…</td></tr></tbody>
+      </table></div>
+      <div class="admin-pagination"><button id="previousPage" class="btn btn-ghost" disabled>Trang trước</button><span id="pageSummary">Đang tải…</span><button id="nextPage" class="btn btn-ghost" disabled>Trang sau</button></div>
+    </section>
+    <section id="sessionsPanel" class="card" hidden>
+      <div class="card-head"><div><h2>Phiên của tài khoản</h2><p id="selectedUser" class="muted"></p></div><button id="closeSessions" class="btn btn-ghost" type="button">Đóng</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Thiết bị</th><th>IP</th><th>Thời điểm đăng nhập</th><th>TTL còn lại</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody id="adminSessions"><tr><td colspan="6" class="empty">Chọn tài khoản để xem phiên.</td></tr></tbody></table></div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>

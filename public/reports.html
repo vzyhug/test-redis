@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Xuất lịch sử, cảnh báo và thống kê Redis Session Manager thành CSV" />
+  <title>Báo cáo & Xuất dữ liệu | Redis Session Manager</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">Redis Session Manager · Báo cáo</header>
+  <main class="container reports-container">
+    <h1>Báo cáo & Xuất dữ liệu</h1>
+    <p class="subtitle">Tải dữ liệu thực tế được lưu trong Redis thành CSV. Mỗi lần xuất hỗ trợ tối đa 30 ngày; dữ liệu cũ hơn retention có thể không còn.</p>
+    <p id="reportsNotice" class="notice" role="status" aria-live="polite" hidden></p>
+    <p id="reportsLoading" class="muted" role="status">Đang xác minh phiên đăng nhập…</p>
+
+    <div id="reportsGrid" class="report-grid" hidden>
+      <section class="card report-card">
+        <div class="card-head"><div><h2>Lịch sử hoạt động</h2><p class="muted">Sự kiện audit đăng nhập, đăng xuất và quản lý phiên.</p></div></div>
+        <form id="historyExportForm" class="report-form" data-kind="history">
+          <label>Từ ngày<input id="historyExportFrom" name="from" type="date" required /></label>
+          <label>Đến ngày<input id="historyExportTo" name="to" type="date" required /></label>
+          <label>Loại sự kiện<select id="historyExportType" name="eventType">
+            <option value="">Tất cả sự kiện</option>
+            <option value="LOGIN_SUCCESS">LOGIN_SUCCESS · Đăng nhập thành công</option>
+            <option value="LOGIN_FAILED">LOGIN_FAILED · Đăng nhập thất bại</option>
+            <option value="LOGIN_LOCKED">LOGIN_LOCKED · Khóa đăng nhập</option>
+            <option value="LOGOUT">LOGOUT · Đăng xuất</option>
+            <option value="SESSION_REVOKED">SESSION_REVOKED · Thu hồi phiên</option>
+            <option value="LOGOUT_ALL">LOGOUT_ALL · Đăng xuất mọi thiết bị</option>
+            <option value="SESSION_AUTO_REVOKED">SESSION_AUTO_REVOKED · Tự thu hồi phiên</option>
+            <option value="ADMIN_SESSION_REVOKED">ADMIN_SESSION_REVOKED · Admin thu hồi phiên</option>
+            <option value="ADMIN_LOGOUT_ALL">ADMIN_LOGOUT_ALL · Admin đăng xuất mọi phiên</option>
+          </select></label>
+          <label class="admin-report-filter" hidden>Tài khoản (user ID)<input id="historyExportUser" name="userId" maxlength="128" autocomplete="off" placeholder="Để trống để xuất toàn hệ thống" /></label>
+          <button class="btn btn-primary report-export-button" type="submit">Xuất lịch sử CSV</button>
+        </form>
+      </section>
+
+      <section class="card report-card">
+        <div class="card-head"><div><h2>Cảnh báo bảo mật</h2><p class="muted">Cảnh báo Security Center còn trong Redis, gồm cả trạng thái xử lý hiện tại.</p></div></div>
+        <form id="securityExportForm" class="report-form" data-kind="security">
+          <label>Từ ngày<input id="securityExportFrom" name="from" type="date" required /></label>
+          <label>Đến ngày<input id="securityExportTo" name="to" type="date" required /></label>
+          <label>Mức độ<select id="securityExportSeverity" name="severity"><option value="">Tất cả mức độ</option><option value="LOW">LOW</option><option value="MEDIUM">MEDIUM</option><option value="HIGH">HIGH</option></select></label>
+          <label>Trạng thái<select id="securityExportStatus" name="status"><option value="">Tất cả trạng thái</option><option value="OPEN">OPEN</option><option value="PROCESSING">PROCESSING</option><option value="RESOLVED_SAFE">RESOLVED_SAFE</option><option value="RESOLVED_REVOKED">RESOLVED_REVOKED</option></select></label>
+          <label>Loại cảnh báo<select id="securityExportType" name="alertType"><option value="">Tất cả loại</option><option value="NEW_LOGIN_ENVIRONMENT">NEW_LOGIN_ENVIRONMENT</option><option value="LOGIN_LOCKOUT">LOGIN_LOCKOUT</option></select></label>
+          <label class="admin-report-filter" hidden>Tài khoản (user ID)<input id="securityExportUser" name="userId" maxlength="128" autocomplete="off" placeholder="Để trống để xuất toàn hệ thống" /></label>
+          <button class="btn btn-primary report-export-button" type="submit">Xuất cảnh báo CSV</button>
+        </form>
+      </section>
+
+      <section class="card report-card">
+        <div class="card-head"><div><h2>Báo cáo thống kê theo ngày</h2><p class="muted">Đếm sự kiện audit và cảnh báo theo ngày Việt Nam. Chỉ dữ liệu còn lưu được tính.</p></div></div>
+        <form id="summaryExportForm" class="report-form" data-kind="summary">
+          <label>Từ ngày<input id="summaryExportFrom" name="from" type="date" required /></label>
+          <label>Đến ngày<input id="summaryExportTo" name="to" type="date" required /></label>
+          <label class="admin-report-filter" hidden>Tài khoản (user ID)<input id="summaryExportUser" name="userId" maxlength="128" autocomplete="off" placeholder="Để trống để xuất toàn hệ thống" /></label>
+          <button class="btn btn-primary report-export-button" type="submit">Xuất thống kê CSV</button>
+        </form>
+      </section>
+    </div>
+  </main>
+  <script src="/app.js"></script>
+  <script src="/reports.js"></script>
+</body>
+</html>

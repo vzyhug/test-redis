@@ -8,3 +8,8 @@ Tài liệu thiết kế Backend API, Firestore và Redis cho quản lý đăng 
 - [Cấu hình indexes Firestore đề xuất, chưa deploy](firestore.indexes.json)
 - [Lệnh Redis theo thiết kế (.txt)](redis-commands.txt)
 - [Hướng dẫn kết nối Firestore, Redis và RedisInsight Desktop trên Windows (.txt)](data-setup-guide.txt)
+
+## Redis Session Management Demo
+
+The runnable application source and setup instructions are in [README-app.md](README-app.md).
+

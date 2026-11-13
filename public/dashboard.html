@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Tổng quan phiên đăng nhập Redis" />
+  <title>Tổng quan | Redis Session Manager</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar"><span>Redis Session Manager</span></header>
+  <main class="container">
+    <h1>Xin chào, <span id="helloName">...</span></h1>
+    <p class="subtitle">Theo dõi và quản lý các phiên đăng nhập của bạn.</p>
+    <p id="sessionNotice" class="notice" role="status" aria-live="polite" hidden></p>
+    <section class="dashboard-grid" aria-label="Tổng quan tài khoản">
+      <article class="kpi-card kpi-green"><span class="kpi-label">Phiên đang hoạt động</span><strong class="kpi-value" id="activeSessionKpi">—</strong><span class="kpi-foot">Trên các thiết bị</span></article>
+      <article class="kpi-card"><span class="kpi-label">Tổng số lần đăng nhập</span><strong class="kpi-value" id="loginCountKpi">—</strong><span class="kpi-foot">Theo bộ đếm tài khoản</span></article>
+      <article class="kpi-card kpi-blue"><span class="kpi-label">Giới hạn phiên</span><strong class="kpi-value" id="sessionLimitKpi">—</strong><span class="kpi-foot">Tối đa 3 phiên mỗi tài khoản</span></article>
+      <article class="kpi-card"><span class="kpi-label">Phiên hiện tại còn</span><strong class="kpi-value" id="currentTtlKpi">—</strong><span class="kpi-foot">TTL từ Redis</span></article>
+    </section>
+    <div class="dashboard-columns">
+      <section class="card">
+        <div class="card-head"><div><h2>Phiên hiện tại</h2><p class="muted">Thiết bị đang dùng tài khoản này</p></div><button id="refreshBtn" class="btn btn-ghost" type="button">Làm mới</button></div>
+        <dl class="info-grid">
+          <div><dt>Tài khoản</dt><dd id="helloNameDetail">—</dd></div><div><dt>User ID</dt><dd id="userId">—</dd></div>
+          <div><dt>Vai trò</dt><dd id="role">—</dd></div><div><dt>Địa chỉ IP</dt><dd id="ip">—</dd></div>
+          <div><dt>Đăng nhập lúc</dt><dd id="loginTime">—</dd></div><div><dt>Thiết bị</dt><dd id="device">—</dd></div>
+        </dl>
+      </section>
+      <section class="card">
+        <div class="card-head"><div><h2>Hoạt động gần đây</h2><p class="muted">Lịch sử mới nhất của tài khoản</p></div><a class="btn btn-ghost btn-small" href="/history.html">Xem lịch sử</a></div>
+        <div class="table-wrap"><table><thead><tr><th>Hoạt động</th><th>Thời gian</th><th>Kết quả</th></tr></thead><tbody id="recentActivity"><tr><td colspan="3" class="empty">Đang tải lịch sử…</td></tr></tbody></table></div>
+      </section>
+    </div>
+    <section class="card" id="sessions" style="margin-top:20px">
+      <div class="card-head"><div><h2>Phiên đăng nhập</h2><p class="muted">Xem các thiết bị và thu hồi phiên không còn sử dụng.</p></div><button id="logoutAllBtn" class="btn btn-danger" type="button">Đăng xuất tất cả thiết bị</button></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Thiết bị</th><th>IP</th><th>Thời điểm đăng nhập</th><th>Thời gian còn</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+        <tbody id="sessionList"><tr><td colspan="6" class="empty">Đang tải phiên…</td></tr></tbody>
+      </table></div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+  <script src="/script.js"></script>
+</body>
+</html>

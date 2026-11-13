@@ -1,0 +1,25 @@
+{
+  "name": "redis-session-app",
+  "version": "1.0.0",
+  "description": "Ứng dụng minh họa quản lý phiên đăng nhập bằng Redis Session và quan sát bằng Redis Insight",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node scripts/seedUsers.js",
+    "test": "node --test",
+    "test:e2e": "node scripts/e2eRunner.js",
+    "test:e2e:headed": "node scripts/e2eRunner.js --headed",
+    "test:e2e:all": "node scripts/e2eRunner.js --with-node-tests",
+    "test:e2e:report": "playwright show-report"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "redis": "^4.7.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
+}

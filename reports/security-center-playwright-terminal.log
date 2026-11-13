@@ -1,0 +1,8 @@
+﻿Final validation summary — 2026-10-30
+Command: npm run test:e2e:all
+Environment: disposable Redis 7.2.16 at 127.0.0.1:16380; backend 127.0.0.1:3100; no volume mounted.
+Project Redis 127.0.0.1:6380 and app backend port 3000 were not used.
+Playwright: 30 total; 29 passed, 0 failed, 1 skipped (E2E-08 genuine second source IP unavailable).
+Node.js: 102 passed, 0 failed, 0 skipped.
+Redis container: removed by the runner after completion.
+Focused regression checks: E2E-13 safe resolution/cancel/duplicate prevention PASS; E2E-13a API conflict recovery PASS; E2E-18 ADMIN safe resolution PASS; E2E-28 Redis consistency PASS; E2E-01a logout-all cancel and single confirmation PASS.

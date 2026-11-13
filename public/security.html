@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Trung tâm bảo mật Redis Session Manager" />
+  <title>Trung tâm bảo mật | Redis Session Manager</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">Redis Session Manager · Trung tâm bảo mật</header>
+  <main class="container security-container">
+    <h1>Trung tâm bảo mật</h1>
+    <p id="securitySubtitle" class="subtitle">Theo dõi và xử lý các dấu hiệu bảo mật liên quan đến tài khoản.</p>
+    <p id="securityNotice" class="notice" role="status" aria-live="polite" hidden></p>
+    <section class="admin-stats security-stats" aria-label="Thống kê cảnh báo">
+      <article class="card"><span>Tổng cảnh báo</span><strong id="securityTotal">—</strong></article>
+      <article class="card"><span>Đang mở</span><strong id="securityOpen">—</strong></article>
+      <article class="card"><span>Mức độ cao</span><strong id="securityHigh">—</strong></article>
+      <article class="card"><span>Đã xử lý</span><strong id="securityResolved">—</strong></article>
+    </section>
+    <section class="card">
+      <div class="card-head security-filter-head">
+        <div><h2 id="securityListTitle">Cảnh báo của bạn</h2><p class="muted">Dữ liệu cảnh báo được lưu tối đa 30 ngày.</p></div>
+        <button id="securityRefresh" class="btn btn-ghost" type="button">Làm mới</button>
+      </div>
+      <form id="securityFilters" class="history-filters">
+        <label id="securitySearchLabel" hidden>Tìm tài khoản<input id="securitySearch" type="search" maxlength="64" placeholder="Username hoặc user ID" /></label>
+        <label>Mức độ<select id="securitySeverity"><option value="">Tất cả</option><option value="LOW">Thấp</option><option value="MEDIUM">Trung bình</option><option value="HIGH">Cao</option></select></label>
+        <label>Trạng thái<select id="securityStatus"><option value="">Tất cả</option><option value="OPEN">Đang mở</option><option value="RESOLVED_SAFE">Đã xác nhận an toàn</option><option value="RESOLVED_REVOKED">Đã thu hồi phiên</option></select></label>
+        <label>Loại cảnh báo<select id="securityType"><option value="">Tất cả</option><option value="NEW_LOGIN_ENVIRONMENT">Môi trường đăng nhập mới</option><option value="LOGIN_LOCKOUT">Khóa do đăng nhập sai</option></select></label>
+        <label>Từ ngày<input id="securityFrom" type="datetime-local" /></label>
+        <label>Đến ngày<input id="securityTo" type="datetime-local" /></label>
+        <button class="btn btn-primary" type="submit">Áp dụng</button>
+      </form>
+      <div class="table-wrap"><table>
+        <thead id="securityTableHead"><tr><th>Thời gian</th><th>Cảnh báo</th><th>Mức độ</th><th>Thiết bị / IP</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+        <tbody id="securityRows"><tr><td colspan="6" class="empty">Đang tải cảnh báo…</td></tr></tbody>
+      </table></div>
+      <div class="admin-pagination"><span id="securityPageInfo" aria-live="polite">Đang tải…</span><button id="securityNext" class="btn btn-ghost" type="button" disabled>Xem cảnh báo cũ hơn</button></div>
+    </section>
+    <section id="securityDetail" class="card security-detail" hidden>
+      <div class="card-head"><div><h2 id="detailTitle">Chi tiết cảnh báo</h2><p id="detailMeta" class="muted"></p></div><button id="detailClose" class="btn btn-ghost" type="button">Đóng</button></div>
+      <p id="detailDescription" class="security-description"></p>
+      <dl class="info-grid security-detail-grid"><div><dt>Nguyên nhân</dt><dd id="detailReasons">—</dd></div><div><dt>Thiết bị</dt><dd id="detailDevice">—</dd></div><div><dt>Địa chỉ IP</dt><dd id="detailIp">—</dd></div><div><dt>Phiên liên quan</dt><dd id="detailSession">—</dd></div><div id="detailLockout" hidden><dt>Chi tiết khóa</dt><dd id="detailLockoutValue">—</dd></div><div><dt>Người xử lý</dt><dd id="detailResolver">—</dd></div></dl>
+      <div class="security-actions"><button id="markReadBtn" class="btn btn-ghost" type="button">Đánh dấu đã xem</button><button id="resolveSafeBtn" class="btn btn-primary" type="button">Xác nhận an toàn</button><button id="revokeAlertSessionBtn" class="btn btn-danger" type="button" hidden>Thu hồi phiên liên quan</button></div>
+      <h3 class="security-events-title">Lịch sử xử lý</h3>
+      <div class="table-wrap"><table><thead><tr><th>Thời gian</th><th>Sự kiện</th><th>Người thực hiện</th></tr></thead><tbody id="securityEvents"><tr><td colspan="3" class="empty">Đang tải lịch sử…</td></tr></tbody></table></div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+  <script src="/security.js"></script>
+</body>
+</html>

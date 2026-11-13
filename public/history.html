@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Lịch sử hoạt động tài khoản Redis Session Manager" />
+  <title>Lịch sử hoạt động | Redis Session Manager</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">Redis Session Manager · Lịch sử</header>
+  <main class="container admin-container">
+    <h1 id="historyTitle">Lịch sử hoạt động</h1>
+    <p class="subtitle">Các sự kiện đăng nhập và quản lý phiên được lưu trong 30 ngày.</p>
+    <p id="historyNotice" class="notice" role="status" aria-live="polite" hidden></p>
+    <section class="card">
+      <form id="historyFilters" class="history-filters">
+        <label>Loại hoạt động<select id="eventTypeFilter">
+          <option value="">Tất cả hoạt động</option><option value="LOGIN_SUCCESS">Đăng nhập thành công</option><option value="LOGIN_FAILED">Đăng nhập thất bại</option><option value="LOGIN_LOCKED">Khóa đăng nhập</option><option value="LOGOUT">Đăng xuất</option><option value="SESSION_REVOKED">Thu hồi phiên</option><option value="LOGOUT_ALL">Đăng xuất mọi thiết bị</option><option value="SESSION_AUTO_REVOKED">Tự thu hồi phiên cũ</option><option value="ADMIN_SESSION_REVOKED">Admin thu hồi phiên</option><option value="ADMIN_LOGOUT_ALL">Admin đăng xuất mọi phiên</option>
+        </select></label>
+        <label class="admin-history-filter" hidden>Tài khoản liên quan<input id="historyUserId" maxlength="128" placeholder="Lọc actor hoặc tài khoản bị tác động" /></label>
+        <label>Từ ngày<input id="historyFrom" type="datetime-local" /></label><label>Đến ngày<input id="historyTo" type="datetime-local" /></label>
+        <button class="btn btn-primary" type="submit">Áp dụng</button><button id="historyRefresh" class="btn btn-ghost" type="button">Làm mới</button>
+      </form>
+      <div class="table-wrap"><table>
+        <thead id="historyHeader"><tr><th>Thời gian</th><th>Hoạt động</th><th>Thiết bị</th><th>IP</th><th>Kết quả</th></tr></thead>
+        <tbody id="historyRows"><tr><td colspan="5" class="empty">Đang tải lịch sử…</td></tr></tbody>
+      </table></div>
+      <div class="admin-pagination"><span id="historyPageInfo" aria-live="polite">Đang tải…</span><button id="historyNext" class="btn btn-ghost" disabled>Xem lịch sử cũ hơn</button></div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+  <script src="/history.js"></script>
+</body>
+</html>
