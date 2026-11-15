@@ -1,5 +1,7 @@
 node_modules/
 .env
+service-account*.json
+*-firebase-adminsdk-*.json
 npm-debug.log*
 .DS_Store
 test-results/

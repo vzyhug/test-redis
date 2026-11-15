@@ -43,6 +43,7 @@ local targetKey = 'session:' .. matchId
 local targetUsername = redis.call('HGET', targetKey, 'username') or ''
 local targetDevice = redis.call('HGET', targetKey, 'device') or ''
 local targetIp = redis.call('HGET', targetKey, 'ip') or ''
+local sessionRef = redis.call('HGET', targetKey, 'sessionRef') or ''
 redis.call('DEL', targetKey)
 redis.call('SREM', setKey, matchId)
 redis.call('ZREM', orderKey, matchId)
@@ -51,7 +52,7 @@ local nowMs = auditNowMs()
 local fields = auditFields(
   ARGV[5], ARGV[4], ARGV[6], ARGV[7], ARGV[8], userId, targetUsername,
   nowMs, 'SUCCESS', ARGV[9] ~= '' and ARGV[9] or targetIp,
-  ARGV[10] ~= '' and ARGV[10] or targetDevice, nil, ''
+  ARGV[10] ~= '' and ARGV[10] or targetDevice, nil, '', sessionRef
 )
 local written = appendAudit(KEYS[3], KEYS[4], KEYS[5], fields, tonumber(ARGV[11]), nowMs)
 return { 'REVOKED', written and '1' or '0' }

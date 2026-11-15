@@ -31,6 +31,7 @@ local autoEventId = ARGV[13]
 local auditRetention = tonumber(ARGV[14])
 local eventDevice = ARGV[15]
 local eventIp = ARGV[16]
+local sessionRef = ARGV[17]
 local maxIndexRepair = 1000
 
 local function keyType(key)
@@ -48,7 +49,7 @@ end
 if not createdAtMs or not ttl or not maxSessions or maxSessions < 1 or not managementId or managementId == sessionId then
   return redis.error_reply('invalid session creation arguments')
 end
-if not auditRetention or auditRetention < 1 or not loginEventId or not autoEventId then
+if not auditRetention or auditRetention < 1 or not loginEventId or not autoEventId or not sessionRef then
   return redis.error_reply('invalid audit arguments')
 end
 
@@ -175,7 +176,8 @@ while #active >= maxSessions do
   autoRevoked[#autoRevoked + 1] = {
     username = redis.call('HGET', oldKey, 'username') or username,
     device = redis.call('HGET', oldKey, 'device') or '',
-    ip = redis.call('HGET', oldKey, 'ip') or ''
+    ip = redis.call('HGET', oldKey, 'ip') or '',
+    sessionRef = redis.call('HGET', oldKey, 'sessionRef') or ''
   }
   redis.call('DEL', oldKey)
   redis.call('SREM', sessionsKey, oldest)
@@ -191,7 +193,8 @@ redis.call(
   'device', device,
   'ip', ip,
   'loginTime', loginTime,
-  'managementId', managementId
+  'managementId', managementId,
+  'sessionRef', sessionRef
 )
 redis.call('EXPIRE', newSessionKey, ttl)
 redis.call('SADD', sessionsKey, sessionId)
@@ -204,13 +207,15 @@ local auditWritten = true
 for index, revoked in ipairs(autoRevoked) do
   local fields = auditFields(
     autoEventId .. '-' .. tostring(index), 'SESSION_AUTO_REVOKED', '', 'SYSTEM', 'SYSTEM',
-    userId, revoked.username, eventTime, 'SUCCESS', revoked.ip, revoked.device, nil, 'MAX_SESSIONS'
+    userId, revoked.username, eventTime, 'SUCCESS', revoked.ip, revoked.device, nil, 'MAX_SESSIONS',
+    revoked.sessionRef
   )
   if not appendAudit(auditGlobalKey, auditUserKey, '', fields, auditRetention, eventTime) then auditWritten = false end
 end
 local loginFields = auditFields(
   loginEventId, 'LOGIN_SUCCESS', userId, role, username, userId, username,
-  eventTime, 'SUCCESS', eventIp, eventDevice, nil, ''
+  eventTime, 'SUCCESS', eventIp, eventDevice, nil, '', sessionRef, nil,
+  createdAtMs, createdAtMs + ttl * 1000
 )
 if not appendAudit(auditGlobalKey, auditUserKey, '', loginFields, auditRetention, eventTime) then auditWritten = false end
 

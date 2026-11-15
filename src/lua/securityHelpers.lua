@@ -50,9 +50,11 @@ end
 appendSecurityEvent = function(streamKey, alertId, eventType, actorUserId, nowMs, details, retentionSeconds)
   local cutoffId = tostring(math.max(0, nowMs - retentionSeconds * 1000)) .. '-0'
   local alertStreamKey = 'security:alert:events:' .. alertId
+  local alertKey = 'security:alert:' .. alertId
+  local userId = redis.call('HGET', alertKey, 'userId') or ''
   local function appendOne(key)
-    local result = redis.pcall('XADD', key, '*', 'alertId', alertId, 'eventType', eventType,
-      'actorUserId', actorUserId, 'occurredAtMs', tostring(nowMs), 'details', details or '')
+    local result = redis.pcall('XADD', key, '*', 'alertId', alertId, 'userId', userId,
+      'eventType', eventType, 'actorUserId', actorUserId, 'occurredAtMs', tostring(nowMs), 'details', details or '')
     if type(result) == 'table' and result.err then return false end
     local trimmed = redis.pcall('XTRIM', key, 'MINID', '=', cutoffId)
     local expired = redis.pcall('EXPIRE', key, retentionSeconds)

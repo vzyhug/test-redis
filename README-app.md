@@ -638,3 +638,24 @@ Audit events and alerts are subject to their existing Redis retention and cleanu
 5. Run `npm run test:e2e:all` for Chromium download tests and Node integration/regression tests. The runner uses only its disposable Redis at `127.0.0.1:16380` and backend port `3100`; do not point tests at the project Redis on port `6380`.
 
 Integration coverage is in `test/reportExports.test.js` (EX-TC-01 through EX-TC-28). Browser download checks are in `e2e/reports.spec.js`. The HTML report is written to `playwright-report/` by the existing E2E runner.
+
+## Durable Firebase / Firestore storage
+
+The app can keep Redis as the live authentication store and optionally mirror durable information to Cloud Firestore. Redis remains authoritative for password verification, session validity, session revocation, and temporary login locks. Firestore stores an allowlisted user profile, retained authentication/security activity, login totals, and session history. Password hashes, cookie values, raw Redis session IDs, and management IDs are never written to Firestore.
+
+### Configure
+
+1. Create a Firebase project and enable Cloud Firestore in Native mode.
+2. Install dependencies with `npm install` (includes `firebase-admin`).
+3. Copy `.env.example` to `.env`, set `FIRESTORE_SYNC_ENABLED=true` and `FIREBASE_PROJECT_ID`.
+4. For local Windows development, set `GOOGLE_APPLICATION_CREDENTIALS` to a service account JSON stored outside the repository. On Google Cloud, use the runtime service identity / Application Default Credentials instead. Grant the identity only the required Firestore access.
+5. Keep `FIRESTORE_SOURCE_EPOCH` unchanged while using the same Redis dataset. Change it after replacing/restoring Redis in a way that resets its Stream history. Set a long random `FIRESTORE_SESSION_REF_KEY` if stable HMAC references across app restarts are required; existing session references are stored in Redis and are not recalculated.
+6. Start Redis, then run `npm start`. The Firestore worker resumes after its saved checkpoint and polls `audit:auth:global` and `security:alerts:events`.
+
+With `FIRESTORE_SYNC_ENABLED=false` or unset, the app behaves as the Redis-only demo. When enabled, profile writes happen after successful authentication; a background worker stores stream events using Firestore transactions, receipts, and per-stream checkpoints. The same event can be retried safely. Firestore write errors are logged and the worker retries from its last committed checkpoint; the login/session request remains governed by Redis.
+
+### Data boundary and delivery limits
+
+The worker creates `users`, `activity_events`, `session_history`, `user_auth_stats`, `system_auth_stats`, `auth_event_receipts`, and `auth_sync_checkpoints`. Session history uses an HMAC reference stored in the Redis session hash; end events and logout-all carry only those opaque references. No heartbeat snapshots are written yet, so `last_seen_at` is the session creation time. Existing Redis audit Streams are trimmed after their configured retention (30 days by default); a worker outage longer than that window can leave an unrecoverable gap. This async branch is durable after Firestore commit, but it does not make the Redis-to-Firestore handoff lossless across Redis data loss. For that guarantee, enable and verify Redis persistence/backups or move the durable journal write into the synchronous business operation.
+
+Firestore indexes and TTL policies still need deployment/configuration in the Firebase project. Service account JSON files must stay out of Git; `.gitignore` excludes the common key-file names.

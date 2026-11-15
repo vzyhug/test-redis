@@ -17,6 +17,7 @@ const auditService = require('./auditService');
 
 const SESSION_TTL = 1800; // 30 phút
 const MAX_SESSIONS = 3;
+const SESSION_REF_KEY = process.env.FIRESTORE_SESSION_REF_KEY || crypto.randomBytes(32);
 const LOGIN_FAILURE_WINDOW_SECONDS = positiveIntegerEnv('AUTH_FAILURE_WINDOW_SECONDS', 900);
 const LOGIN_LOCK_SECONDS = positiveIntegerEnv('AUTH_LOCK_SECONDS', 900);
 const LOGIN_FAILURE_THRESHOLD = 5;
@@ -109,6 +110,7 @@ async function recordLoginFailure(username, context = {}) {
 async function createSession(user, device, ip, authUsername = user.username, options = {}) {
   // Lua script kiểm tra giới hạn, thu hồi session cũ nhất và ghi toàn bộ key nguyên tử.
   const sessionId = crypto.randomUUID();
+  const sessionRef = crypto.createHmac('sha256', SESSION_REF_KEY).update(sessionId).digest('hex');
   let managementId = crypto.randomUUID();
   while (managementId === sessionId) managementId = crypto.randomUUID();
   const createdAtMs = Date.now();
@@ -142,6 +144,7 @@ async function createSession(user, device, ip, authUsername = user.username, opt
       String(auditService.RETENTION_SECONDS),
       String(device || 'unknown').slice(0, 256),
       String(ip || 'unknown').slice(0, 64),
+      sessionRef,
     ],
   });
 

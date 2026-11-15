@@ -27,9 +27,12 @@ for _, id in ipairs(ids) do
   if sessionKind ~= 'none' and sessionKind ~= 'hash' then return redis.error_reply('wrong type for referenced session') end
 end
 local removed = 0
+local sessionRefs = {}
 for _, id in ipairs(ids) do
   local key = 'session:' .. id
   if kind(key) == 'hash' and redis.call('HGET', key, 'userId') == userId then
+    local sessionRef = redis.call('HGET', key, 'sessionRef') or ''
+    if sessionRef ~= '' then sessionRefs[#sessionRefs + 1] = sessionRef end
     removed = removed + redis.call('DEL', key)
   end
   redis.call('SREM', setKey, id)
@@ -42,7 +45,7 @@ local nowMs = auditNowMs()
 local targetUsername = redis.call('HGET', 'user:' .. userId, 'username') or ''
 local fields = auditFields(
   ARGV[3], ARGV[2], ARGV[4], ARGV[5], ARGV[6], userId, targetUsername,
-  nowMs, 'SUCCESS', ARGV[7], ARGV[8], removed, ''
+  nowMs, 'SUCCESS', ARGV[7], ARGV[8], removed, '', nil, table.concat(sessionRefs, ',')
 )
 local written = appendAudit(KEYS[3], KEYS[4], KEYS[5], fields, tonumber(ARGV[9]), nowMs)
 return { 'REVOKED', tostring(removed), written and '1' or '0' }

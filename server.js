@@ -15,6 +15,7 @@ const auditService = require('./src/auditService');
 const sessionService = require('./src/sessionService');
 const securityService = require('./src/securityService');
 const reportController = require('./src/reportController');
+const firestoreSync = require('./src/firestoreSync');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -421,6 +422,12 @@ app.post('/api/login', async (req, res) => {
     );
     const { sessionId } = created;
 
+    // Firestore contains a durable profile copy; Redis remains authoritative for auth/session.
+    void firestoreSync.saveUserProfile({
+      userId, username: user.username, role: user.role, email: user.email,
+      displayName: user.displayName,
+    }).catch((error) => console.error('[Firestore] Could not save user profile:', error.message));
+
     // Security monitoring is best-effort and cannot undo a committed login.
     await securityService.observeSuccessfulLogin({
       userId, username: user.username, userAgent: device, ip,
@@ -593,15 +600,18 @@ app.post('/api/logout', sameOriginMutation, async (req, res) => {
 // ------------------------------------------------------------
 async function start() {
   try {
+    firestoreSync.initialize();
     await connectRedis();
     await auditService.startCleanup();
     await securityService.startCleanup();
+    firestoreSync.startWorker();
     const server = app.listen(PORT, () => {
       console.log(`Server đang chạy tại http://localhost:${PORT}`);
     });
     const shutdown = async () => {
       auditService.stopCleanup();
       securityService.stopCleanup();
+      await firestoreSync.stopWorker();
       server.close(async () => {
         if (client.isOpen) await client.quit();
         process.exit(0);

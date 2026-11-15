@@ -38,7 +38,8 @@ local function appendAudit(globalKey, targetKey, actorKey, fields, retentionSeco
 end
 
 local function auditFields(eventId, eventType, actorId, actorRole, actorUsername,
-  targetId, username, occurredAtMs, result, ip, device, revokedCount, reason)
+  targetId, username, occurredAtMs, result, ip, device, revokedCount, reason,
+  sessionRef, sessionRefs, createdAtMs, expiresAtMs)
   local fields = {
     'eventId', auditText(eventId, 80),
     'eventType', auditText(eventType, 32),
@@ -54,5 +55,9 @@ local function auditFields(eventId, eventType, actorId, actorRole, actorUsername
   if device and device ~= '' then fields[#fields + 1] = 'device'; fields[#fields + 1] = auditText(device, 256) end
   if revokedCount ~= nil then fields[#fields + 1] = 'revokedCount'; fields[#fields + 1] = tostring(revokedCount) end
   if reason and reason ~= '' then fields[#fields + 1] = 'reason'; fields[#fields + 1] = auditText(reason, 80) end
+  if sessionRef and sessionRef ~= '' then fields[#fields + 1] = 'sessionRef'; fields[#fields + 1] = auditText(sessionRef, 128) end
+  if sessionRefs and sessionRefs ~= '' then fields[#fields + 1] = 'sessionRefs'; fields[#fields + 1] = auditText(sessionRefs, 1024) end
+  if createdAtMs then fields[#fields + 1] = 'createdAtMs'; fields[#fields + 1] = tostring(createdAtMs) end
+  if expiresAtMs then fields[#fields + 1] = 'expiresAtMs'; fields[#fields + 1] = tostring(expiresAtMs) end
   return fields
 end

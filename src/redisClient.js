@@ -2,6 +2,7 @@
 // redisClient.js - Kết nối tới Redis (Docker đang chạy sẵn)
 // Redis: 127.0.0.1:6380 (KHÔNG tạo/sửa container Docker)
 // ============================================================
+require('dotenv').config();
 const { createClient } = require('redis');
 
 // REDIS_URL can point tests or other environments at an isolated Redis server.
