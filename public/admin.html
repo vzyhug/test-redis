@@ -28,6 +28,17 @@
           <button id="adminRefresh" class="btn btn-ghost" type="button" aria-label="Làm mới dữ liệu">Làm mới</button>
         </form>
       </div>
+      <div class="account-create-toolbar"><button id="createAccount" class="btn btn-primary" type="button">Tạo tài khoản</button></div>
+      <form id="accountEditor" class="account-editor" hidden>
+        <h3 id="accountEditorTitle">Tạo tài khoản</h3>
+        <div class="account-editor-fields">
+          <label>Tên đăng nhập<input id="accountUsername" name="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.-]+" autocomplete="off" /></label>
+          <label>Email<input id="accountEmail" name="email" type="email" maxlength="254" /></label>
+          <label>Vai trò<select id="accountRole" name="role"><option value="USER">USER</option><option value="ADMIN">ADMIN</option></select></label>
+          <label>Mật khẩu <span id="passwordHint">(bắt buộc)</span><input id="accountPassword" name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" /></label>
+        </div>
+        <div class="account-editor-actions"><button id="saveAccount" class="btn btn-primary" type="submit">Tạo tài khoản</button><button id="cancelAccountEdit" class="btn btn-ghost" type="button">Hủy</button></div>
+      </form>
       <div class="table-wrap"><table>
         <thead><tr><th>User ID</th><th>Tài khoản</th><th>Email</th><th>Vai trò</th><th>Phiên hoạt động</th><th>Thao tác</th></tr></thead>
         <tbody id="usersTable"><tr><td colspan="6" class="empty">Đang tải tài khoản…</td></tr></tbody>

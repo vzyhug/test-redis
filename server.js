@@ -71,6 +71,11 @@ function parseAdminPage(req) {
   };
 }
 
+function syncAdminAccountProfile(profile) {
+  void firestoreSync.saveUserProfile(profile).catch((error) => {
+    console.error('[Firestore] Could not sync Admin account profile:', error.message);
+  });
+}
 app.get('/api/admin/overview', authMiddleware, requireAdmin, async (req, res) => {
   try {
     return res.json(await adminService.getOverview());
@@ -86,6 +91,82 @@ app.get('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
     return res.json(page);
   } catch (error) {
     console.error('[GET /api/admin/users]', error.message);
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
+  }
+});
+
+app.post('/api/admin/users', adminMutationOriginFirst, authMiddleware, requireAdmin, sameOriginMutation, async (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const passwordHash = await bcrypt.hash(String(body.password || ''), 10);
+    const user = await adminService.createUser(body, passwordHash);
+    return res.status(201).json({ success: true, user });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+    console.error('[POST /api/admin/users]', error.message);
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
+  }
+});
+
+app.patch('/api/admin/users/:userId', adminMutationOriginFirst, authMiddleware, requireAdmin, sameOriginMutation, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const current = await adminService.getUser(userId);
+    if (!current) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const requestedRole = typeof body.role === 'string' ? body.role.toUpperCase() : '';
+    if (userId === req.session.userId && requestedRole && requestedRole !== 'ADMIN') {
+      return res.status(409).json({ success: false, message: 'Không thể tự hạ quyền tài khoản Admin đang đăng nhập' });
+    }
+    if (current.role === 'ADMIN' && requestedRole === 'USER' && await adminService.countAdmins() <= 1) {
+      return res.status(409).json({ success: false, message: 'Hệ thống phải còn ít nhất một tài khoản Admin' });
+    }
+    const passwordHash = body.password ? await bcrypt.hash(String(body.password), 10) : null;
+    const usernameChanged = typeof body.username === 'string' && current.username !== body.username.trim();
+    let revokedCount = 0;
+    let currentSessionRevoked = false;
+    if (passwordHash || usernameChanged || (requestedRole && current.role !== requestedRole)) {
+      const outcome = await sessionService.revokeAllSessions(userId, {
+        eventType: 'ADMIN_LOGOUT_ALL', actorUserId: req.session.userId,
+        actorRole: 'ADMIN', actorUsername: req.session.username,
+        ip: getClientIp(req), device: String(req.headers['user-agent'] || '').slice(0, 256),
+      });
+      revokedCount = outcome.revokedCount;
+      currentSessionRevoked = userId === req.session.userId;
+      if (currentSessionRevoked) res.clearCookie('sessionId');
+    }
+    const user = await adminService.updateUser(userId, body, passwordHash);
+    syncAdminAccountProfile({ userId: user.userId, username: user.username, email: user.email, role: user.role, status: 'active' });
+    return res.json({ success: true, user, revokedCount, currentSessionRevoked });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+    console.error('[PATCH /api/admin/users/:userId]', error.message);
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
+  }
+});
+
+app.delete('/api/admin/users/:userId', adminMutationOriginFirst, authMiddleware, requireAdmin, sameOriginMutation, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const user = await adminService.getUser(userId);
+    if (!user) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
+    if (userId === req.session.userId) {
+      return res.status(409).json({ success: false, message: 'Không thể xóa tài khoản Admin đang đăng nhập' });
+    }
+    if (user.role === 'ADMIN' && await adminService.countAdmins() <= 1) {
+      return res.status(409).json({ success: false, message: 'Hệ thống phải còn ít nhất một tài khoản Admin' });
+    }
+    const outcome = await sessionService.revokeAllSessions(userId, {
+      eventType: 'ADMIN_LOGOUT_ALL', actorUserId: req.session.userId,
+      actorRole: 'ADMIN', actorUsername: req.session.username,
+      ip: getClientIp(req), device: String(req.headers['user-agent'] || '').slice(0, 256),
+    });
+    const deleted = await adminService.deleteUser(userId);
+    syncAdminAccountProfile({ userId, username: '', email: '', role: 'USER', status: 'deleted', displayName: '' });
+    return res.json({ success: true, userId, revokedCount: outcome.revokedCount, deletedSessionCount: deleted.deletedSessionCount });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+    console.error('[DELETE /api/admin/users/:userId]', error.message);
     return res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
   }
 });

@@ -2,6 +2,8 @@
 const sessionsPanel = document.getElementById('sessionsPanel');
 const sessionsTable = document.getElementById('adminSessions');
 const notice = document.getElementById('adminNotice');
+const accountEditor = document.getElementById('accountEditor');
+const accountPassword = document.getElementById('accountPassword');
 const pendingAuditWarning = sessionStorage.getItem('auditWarning');
 if (pendingAuditWarning) {
   notice.textContent = pendingAuditWarning;
@@ -21,6 +23,19 @@ function showNotice(message, isError = false) {
   notice.classList.toggle('notice-error', isError);
   notice.hidden = false;
   window.appToast?.(message, isError);
+}
+function openAccountEditor(user = null) {
+  accountEditor.dataset.userId = user?.userId || '';
+  document.getElementById('accountEditorTitle').textContent = user ? `Sửa tài khoản ${user.username}` : 'Tạo tài khoản';
+  document.getElementById('saveAccount').textContent = user ? 'Lưu thay đổi' : 'Tạo tài khoản';
+  document.getElementById('passwordHint').textContent = user ? '(để trống nếu không đổi)' : '(bắt buộc)';
+  document.getElementById('accountUsername').value = user?.username || '';
+  document.getElementById('accountEmail').value = user?.email || '';
+  document.getElementById('accountRole').value = user?.role || 'USER';
+  accountPassword.value = '';
+  accountPassword.required = !user;
+  accountEditor.hidden = false;
+  document.getElementById('accountUsername').focus();
 }
 function makeCell(value, className = '') {
   const cell = document.createElement('td');
@@ -72,7 +87,11 @@ async function loadUsers() {
       view.addEventListener('click', () => loadUserSessions(user));
       const logoutAll = document.createElement('button'); logoutAll.className = 'btn btn-danger btn-small'; logoutAll.textContent = 'Đăng xuất tất cả';
       logoutAll.addEventListener('click', () => logoutAllUser(user, logoutAll));
-      actions.append(view, logoutAll); row.appendChild(actions); usersTable.appendChild(row);
+      const edit = document.createElement('button'); edit.className = 'btn btn-ghost btn-small'; edit.textContent = 'Sửa';
+      edit.addEventListener('click', () => openAccountEditor(user));
+      const remove = document.createElement('button'); remove.className = 'btn btn-danger btn-small'; remove.textContent = 'Xóa';
+      remove.addEventListener('click', () => deleteAccount(user, remove));
+      actions.append(view, logoutAll, edit, remove); row.appendChild(actions); usersTable.appendChild(row);
     }
     const from = data.total ? pageOffset + 1 : 0;
     const to = Math.min(pageOffset + data.users.length, data.total);
@@ -164,6 +183,57 @@ async function logoutAllUser(user, button) {
     await loadOverview();
   } catch (error) { showNotice(error.message, true); button.disabled = false; button.textContent = 'Đăng xuất tất cả'; }
 }
+
+async function deleteAccount(user, button) {
+  const approved = await (window.appConfirm?.('Xóa tài khoản?', `Tài khoản ${user.username} (${user.userId}) sẽ bị xóa khỏi Redis và toàn bộ phiên sẽ bị thu hồi.`)
+    ?? Promise.resolve(window.confirm(`Xóa tài khoản ${user.username} và thu hồi các phiên của tài khoản?`)));
+  if (!approved) return;
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/admin/users/${encodeURIComponent(user.userId)}`, { method: 'DELETE' });
+    if (showLoginIfUnauthorized(response)) return;
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Không thể xóa tài khoản');
+    if (selectedAccount?.userId === user.userId) { selectedAccount = null; sessionsPanel.hidden = true; }
+    accountEditor.hidden = true;
+    showNotice(`Đã xóa tài khoản ${user.username} và thu hồi ${data.revokedCount} phiên.`);
+    await Promise.all([loadUsers(), loadOverview()]);
+  } catch (error) { showNotice(error.message, true); button.disabled = false; }
+}
+
+document.getElementById('createAccount').addEventListener('click', () => openAccountEditor());
+document.getElementById('cancelAccountEdit').addEventListener('click', () => { accountEditor.hidden = true; });
+accountEditor.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const saveButton = document.getElementById('saveAccount');
+  saveButton.disabled = true;
+  const userId = accountEditor.dataset.userId;
+  const body = {
+    username: document.getElementById('accountUsername').value,
+    email: document.getElementById('accountEmail').value,
+    role: document.getElementById('accountRole').value,
+    password: accountPassword.value,
+  };
+  try {
+    const response = await fetch(userId ? `/api/admin/users/${encodeURIComponent(userId)}` : '/api/admin/users', {
+      method: userId ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (showLoginIfUnauthorized(response)) return;
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Không thể lưu tài khoản');
+    accountEditor.hidden = true;
+    if (data.currentSessionRevoked) {
+      sessionStorage.setItem('auditWarning', 'Thông tin tài khoản đã đổi; hãy đăng nhập lại.');
+      window.location.href = '/login.html';
+      return;
+    }
+    showNotice(userId ? `Đã cập nhật tài khoản ${data.user.username}.` : `Đã tạo tài khoản ${data.user.username}.`);
+    await Promise.all([loadUsers(), loadOverview()]);
+  } catch (error) { showNotice(error.message, true); }
+  finally { saveButton.disabled = false; }
+});
 
 document.getElementById('searchForm').addEventListener('submit', (event) => {
   event.preventDefault(); pageOffset = 0; loadUsers().catch((error) => showNotice(error.message, true));
