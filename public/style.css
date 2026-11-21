@@ -106,6 +106,13 @@ tbody tr:hover { background: #ffffff04; }
 input, select { min-height: 42px; padding: 9px 12px; color: var(--color-text); background: #100d20; border: 1px solid var(--border); border-radius: 9px; }
 input::placeholder { color: #77708f; }
 .admin-search input { flex: 1; min-width: 120px; }
+.account-create-toolbar { display: flex; justify-content: flex-end; margin: 0 0 12px; }
+.account-editor { margin: 0 0 18px; padding: 18px; background: #100d20; border: 1px solid var(--border); border-radius: 12px; }
+.account-editor h3 { margin: 0 0 14px; }
+.account-editor-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.account-editor-fields label { display: grid; gap: 6px; color: var(--color-muted); font-size: .82rem; }
+.account-editor-fields input, .account-editor-fields select { width: 100%; }
+.account-editor-actions { display: flex; gap: 8px; margin-top: 14px; }
 .admin-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 15px; color: var(--color-muted); font-size: .83rem; }
 .admin-row-actions { display: flex; gap: 7px; white-space: nowrap; }
 .history-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 18px; }
@@ -181,6 +188,7 @@ input::placeholder { color: #77708f; }
   .card-head { align-items: flex-start; flex-wrap: wrap; }
   .admin-search-head { align-items: stretch; }
   .admin-search { width: 100%; }
+  .account-editor-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .security-filter-head { align-items: flex-start; }
   .history-filters label { flex: 1 1 145px; }
   .report-grid { grid-template-columns: 1fr; gap: 12px; }
@@ -194,5 +202,5 @@ input::placeholder { color: #77708f; }
   .auth-feature { display: none; }
   .auth-panel { padding: 20px 16px 34px; border: 0; background: transparent; }
 }
-@media (max-width: 430px) { .dashboard-grid, .admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kpi-value { font-size: 1.55rem; } .admin-row-actions { flex-direction: column; } .header-title { font-size: 1rem; } }
+@media (max-width: 430px) { .dashboard-grid, .admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .account-editor-fields { grid-template-columns: 1fr; } .kpi-value { font-size: 1.55rem; } .admin-row-actions { flex-direction: column; } .header-title { font-size: 1rem; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }

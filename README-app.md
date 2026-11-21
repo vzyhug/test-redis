@@ -466,6 +466,9 @@ Admin endpoints:
 |---|---|---|
 | `GET` | `/api/admin/overview` | Current account and active-session totals, including role breakdown |
 | `GET` | `/api/admin/users?limit=25&offset=0&q=` | Paginated account search by userId or username; maximum page size 100 |
+| `POST` | `/api/admin/users` | Create a USER or ADMIN account with a bcrypt password hash |
+| `PATCH` | `/api/admin/users/:userId` | Update username, email, role, or password; role/password changes revoke sessions |
+| `DELETE` | `/api/admin/users/:userId` | Delete account and revoke its sessions |
 | `GET` | `/api/admin/users/:userId/sessions` | Active sessions for a selected account |
 | `DELETE` | `/api/admin/users/:userId/sessions/:managementId` | Revoke one target session; revoking the acting Admin's current session clears its cookie |
 | `POST` | `/api/admin/users/:userId/logout-all` | Revoke all target sessions; self logout-all clears the acting Admin cookie |
